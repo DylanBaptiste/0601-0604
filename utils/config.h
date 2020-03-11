@@ -1,22 +1,32 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-#define DEV 1
+#define GENERAL_X 0
+#define GENERAL_Y 0
 
-#define LARGEUR1 80
-#define HAUTEUR1 5
-#define POSX1    0
-#define POSY1    0
+#define LARGEUR_LOG 26
+#define LARGEUR_ETAT 18
+#define LARGEUR_MAGASIN 29
+#define HAUTEUR_TOP 15
 
-#define LARGEUR2 (30 + 2) 
-#define HAUTEUR2 (15 + 2)  
-#define POSX2    POSX1
-#define POSY2    HAUTEUR1
+#define POSX_ETAT GENERAL_X  
+#define POSY_ETAT GENERAL_Y
 
-#define LARGEUR3 ( LARGEUR1 - LARGEUR2 )
-#define HAUTEUR3 HAUTEUR2  
-#define POSX3    LARGEUR2  
-#define POSY3    HAUTEUR1  
+#define POSX_MAGASIN POSX_ETAT + LARGEUR_ETAT
+#define POSY_MAGASIN GENERAL_Y
+
+#define POSX_LOG POSX_ETAT + LARGEUR_ETAT + LARGEUR_MAGASIN  
+#define POSY_LOG GENERAL_Y
+
+#define POSX_ETANG GENERAL_X
+#define POSY_ETANG HAUTEUR_TOP
+
+#define NAME_ETANG " - - Etang - - "
+#define NAME_ETAT " - Etat - "
+#define NAME_MAGASIN " - Magasin - "
+#define NAME_LOG " - Logs - "
+
+  
 
 #define START_MENU	2
 

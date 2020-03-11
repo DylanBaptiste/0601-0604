@@ -2,8 +2,13 @@
 #ifndef _NCURSES_UTILS_
 #define _NCURSES_UTILS_
 #include <ncurses.h>
-
-#define POISSON_COLOR 0
+#include <string.h>
+#define EAU_COLOR 1
+#define POISSON_COLOR 2
+#define JOUEUR_COLOR  3
+#define REQUIN_COLOR  4
+#define BOX_COLOR  5
+#define RED_COLOR  6
 
 void ncurses_initialiser();
 void ncurses_stopper();

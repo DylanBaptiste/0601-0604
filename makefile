@@ -27,7 +27,7 @@ CC = gcc
 CCFLAGS_STD = 
 CCFLAGS_DEBUG = -D _DEBUG_
 CCFLAGS = $(CCFLAGS_STD)
-CCLIBS = -lncurses
+CCLIBS = -lncurses -lpthread
 
 #
 # REGLES

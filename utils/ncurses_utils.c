@@ -43,13 +43,18 @@ void ncurses_couleurs() {
 		exit(EXIT_FAILURE);
 	}
 
+	use_default_colors();
+
 	/* Activation des couleurs */
 	start_color();
 
 	/* Definition de la palette */
-	init_pair(POISSON_COLOR, COLOR_YELLOW, COLOR_YELLOW);
-	init_pair(1, COLOR_WHITE, COLOR_WHITE);
-	init_pair(2, COLOR_BLUE, COLOR_BLUE);
+	init_pair(EAU_COLOR, COLOR_BLUE,  COLOR_BLUE);
+	init_pair(POISSON_COLOR, COLOR_BLACK, COLOR_YELLOW);
+	init_pair(JOUEUR_COLOR,  COLOR_RED,   COLOR_RED);
+	init_pair(REQUIN_COLOR,  COLOR_WHITE, COLOR_YELLOW);
+	init_pair(BOX_COLOR,     COLOR_WHITE, COLOR_BLACK);
+	init_pair(RED_COLOR,     COLOR_RED, COLOR_BLACK);
 
 }
 
