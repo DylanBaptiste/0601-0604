@@ -1,0 +1,155 @@
+switch (random_range(0, 3))
+        {
+            case 0:
+                if( y < hauteur - 1){
+                    
+                    switch(pthread_mutex_trylock(&map[largeur*(y+1)+x].mutex)){
+                        case 0:{
+                            wprintw(fenetre_log, "\n%d lock (%d, %d)", number, y + 1, x);
+                            if( is_free(y+1, x) ){
+                                map[largeur*y+x].element = VIDE;
+                                wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                mvwaddch(fenetre_jeu, y, x, ' ');
+                                wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                y++;
+                                map[largeur*y+x].element = POISSON;
+                                wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                mvwaddch(fenetre_jeu, y, x, poisson.valeur);
+                                wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                switch(pthread_mutex_unlock(&map[largeur*y+x].mutex)){
+                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x); break;
+                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                    default: break;
+                                }
+                            }else{
+                                switch(pthread_mutex_unlock(&map[largeur*(y+1)+x].mutex)){
+                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y+1, x); break;
+                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                    default: break;
+                                }
+                            }  
+                            break;
+                        }    
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock (%d, %d)", number, y+1, x); break;
+                        case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                        default: break;
+                    }
+                }
+                break;
+                case 1:{
+                    if( y > 0){
+                        switch(pthread_mutex_trylock(&map[largeur*(y-1)+x].mutex)){
+                            case 0:{
+                                wprintw(fenetre_log, "\n%d lock (%d, %d)", number, y - 1, x);
+                                if( is_free(y-1, x) ){
+                                    map[largeur*y+x].element = VIDE;
+                                    wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                    mvwaddch(fenetre_jeu, y, x, ' ');
+                                    wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                    y--;
+                                    map[largeur*y+x].element = POISSON;
+                                    wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                    mvwaddch(fenetre_jeu, y, x, poisson.valeur);
+                                    wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                    switch(pthread_mutex_unlock(&map[largeur*y+x].mutex)){
+                                        case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x); break;
+                                        case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                        case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                        default: break;
+                                    }
+                                }else{
+                                    switch(pthread_mutex_unlock(&map[largeur*(y-1)+x].mutex)){
+                                        case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y-1, x); break;
+                                        case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                        case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                        default: break;
+                                    }
+                                }  
+                                break;
+                            }    
+                            case EBUSY:  wprintw(fenetre_log, "\n%d deja lock (%d, %d)", number, y-1, x); break;
+                            case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                            default: break;
+                        }
+                    }
+                }
+                break;
+            case 2:
+                if( x < largeur - 1 ){
+                    switch(pthread_mutex_trylock(&map[largeur*y+x+1].mutex)){
+                        case 0:{
+                            wprintw(fenetre_log, "\n%d lock (%d, %d)", number, y, x+1);
+                            if( is_free(y, x+1) ){
+                                map[largeur*y+x].element = VIDE;
+                                wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                mvwaddch(fenetre_jeu, y, x, ' ');
+                                wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                x++;
+                                map[largeur*y+x].element = POISSON;
+                                wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                mvwaddch(fenetre_jeu, y, x, poisson.valeur);
+                                wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                switch(pthread_mutex_unlock(&map[largeur*y+x].mutex)){
+                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x); break;
+                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                    default: break;
+                                }
+                            }else{
+                                switch(pthread_mutex_unlock(&map[largeur*(y-1)+x].mutex)){
+                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x+1); break;
+                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                    default: break;
+                                }
+                            }  
+                            break;
+                        }    
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock (%d, %d)", number, y, x+1); break;
+                        case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                        default: break;
+                    }
+                }
+                break;
+            case 3:
+                if( x > 0 && is_free(y, x-1) ){
+                    switch(pthread_mutex_trylock(&map[largeur*y+x-1].mutex)){
+                        case 0:{
+                            wprintw(fenetre_log, "\n%d lock (%d, %d)", number, y, x-1);
+                            if( is_free(y, x+1) ){
+                                map[largeur*y+x].element = VIDE;
+                                wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                mvwaddch(fenetre_jeu, y, x, ' ');
+                                wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                x--;
+                                map[largeur*y+x].element = POISSON;
+                                wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                mvwaddch(fenetre_jeu, y, x, poisson.valeur);
+                                wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                                switch(pthread_mutex_unlock(&map[largeur*y+x].mutex)){
+                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x); break;
+                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                    default: break;
+                                }
+                            }else{
+                                switch(pthread_mutex_unlock(&map[largeur*(y-1)+x].mutex)){
+                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x-1); break;
+                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
+                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                                    default: break;
+                                }
+                            }  
+                            break;
+                        }    
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock (%d, %d)", number, y, x-1); break;
+                        case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                        default: break;
+                    }
+                }
+                break;
+
+            default: break;
+        }

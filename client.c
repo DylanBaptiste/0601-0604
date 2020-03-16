@@ -9,28 +9,34 @@
 #include <errno.h> 
 #include <pthread.h>
 
-#define MAX_POISSON 10
+#define MAX_POISSON 1
 #define POISSON 1
 #define VIDE 0
 
+#define SPAWN_RATE_1 50
+#define SPAWN_RATE_2 35
+#define SPAWN_RATE_3 15
 
 typedef struct poisson_type{
-
     int fuite;
-    int valeur;
+    char valeur;
 
 }poisson_t;
 
 typedef struct case_type{
     int element;
     pthread_mutex_t mutex;
-} case_t;
+    union{
+        poisson_t* poisson;
+    };
+}case_t;
 
 void clean_ncurses(){
     ncurses_stopper();
     fprintf(stdout, "clean_ncurses\n");
     /*et delete fenetre*/
 }
+
 
 
 int quitter = 0;
@@ -42,21 +48,58 @@ WINDOW *fenetre_log, *fenetre_jeu, *fenetre_etat, *fenetre_magasin;
 int largeur;
 int hauteur;
 
-int randomRange(int min, int max){
+int random_range(int min, int max){
     return (rand() % (max - min + 1)) + min;
+}
+void unlock(int y, int x){
+    switch(pthread_mutex_unlock(&map[largeur*y+x].mutex)){
+        case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);
+        case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE);
+        case 0: default: break;
+    }
+}
+
+
+poisson_t* generer_poisson(int seed){
+    srand(time(0) + seed);
+    int r = rand()%100;
+    poisson_t* p = malloc(sizeof(poisson_t));
+    p->fuite = 0;
+    p->valeur = r < SPAWN_RATE_1 ? '1' : ( r < SPAWN_RATE_1 + SPAWN_RATE_2 ? '2' : '3' );
+    return p;
 }
 
 int is_free(int y, int x){
     return map[largeur*y+x].element == VIDE;
 }
 
+void step(poisson_t* poisson, int y, int x, int next_y, int next_x){
+    
+    map[largeur*y+x].element = VIDE;
+    map[largeur*next_y+next_x].element = POISSON;
+    map[largeur*next_y+next_x].poisson = poisson;
+
+    wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+    mvwaddch(fenetre_jeu, y, x, ' ');
+    wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+
+    wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+    mvwaddch(fenetre_jeu, next_y, next_x, poisson->fuite > 0 ? 'F' : poisson->valeur);
+    wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+}
+
 void* routine_poisson(void* arg){
-    int x, y, ok, direction, old_x, old_y = 0;
     int number = *((int*)arg);
-    number += 65;
+    int seed = *((int*)arg) * 10;
+    int up, down, left, right = 0;
+    int i, r = 0;
+    char* array;
+    poisson_t* poisson = generer_poisson(seed);
+    int x, y, ok, direction, old_x, old_y = 0;
+    number = poisson->valeur;
     srand(time(NULL));
-    y = randomRange(0, hauteur - 1);
-    x = randomRange(0, largeur - 1);
+    y = random_range(0, hauteur - 1);
+    x = random_range(0, largeur - 1);
     ok = 0;
     while(!ok){
         switch (pthread_mutex_trylock(&map[largeur*y+x].mutex)){
@@ -65,8 +108,9 @@ void* routine_poisson(void* arg){
                     if(is_free(y, x)){
                         ok = 1;
                         map[largeur*y+x].element = POISSON;
+                        map[largeur*y+x].poisson = poisson;
                         wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                        mvwaddch(fenetre_jeu, y, x, number);
+                        mvwaddch(fenetre_jeu, y, x, poisson->valeur);
                         wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
                         
                         
@@ -88,159 +132,200 @@ void* routine_poisson(void* arg){
                             default: break;
                         }
 
-                        y = randomRange(0, hauteur - 1);
-                        x = randomRange(0, largeur - 1);
+                        y = random_range(0, hauteur - 1);
+                        x = random_range(0, largeur - 1);
                         sleep(1);
                     }
                 }
                 break;
             case EBUSY:{
                 wprintw(fenetre_log, "\ndeja lock (%d, %d)", y, x);
-                y = randomRange(0, hauteur - 1);
-                x = randomRange(0, largeur - 1);
-                sleep(1);
+                y = random_range(0, hauteur - 1);
+                x = random_range(0, largeur - 1);
+                /*sleep(1);*/
             }
             break;
 
             case EINVAL: perror("Le mutex n'a pas été initialisé"); exit(EXIT_FAILURE); break;
             
-            default: wprintw(fenetre_log, "\n??"); break;
+            default: break;
         }
 
         
         
     }
-    
-    
-    old_x = x;
-    old_y = y;
 
     while(1){
-
-        /*wprintw(fenetre_log, "\n(%d, %d)", y, x);*/
         
-        switch (randomRange(0, 0))
-        {
-            case 0:
+        up, down, left, right = 0;
+        poisson->fuite -= poisson->fuite != 0;
+        old_x = x;
+        old_y = y;
+
+        //try lock moi meme si echec -> quelque chose m'arrive je fait pas les if
+        switch(pthread_mutex_trylock(&map[largeur*y+x].mutex)){
+            case 0:{
                 if( y < hauteur - 1){
-                    
-                    switch(pthread_mutex_trylock(&map[largeur*(y+1)+x].mutex)){
+                    switch(pthread_mutex_trylock(&map[largeur*(y + 1)+x].mutex)){
                         case 0:{
-                            wprintw(fenetre_log, "\n%d lock (%d, %d)", number, y + 1, x);
-                            if( is_free(y+1, x) ){
-                                map[largeur*y+x].element = VIDE;
-                                wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                                mvwaddch(fenetre_jeu, y, x, ' ');
-                                wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                                y++;
-                                map[largeur*y+x].element = POISSON;
-                                wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                                mvwaddch(fenetre_jeu, y, x, number);
-                                wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                                switch(pthread_mutex_unlock(&map[largeur*y+x].mutex)){
-                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x); break;
-                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
-                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
-                                    default: break;
+                            switch (map[largeur*(y + 1)+x].element)
+                            {
+                                case VIDE: {
+                                    down = 1;
+                                    /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                    mvwaddch(fenetre_jeu, y+1, x, 'L');
+                                    wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                                    break;
                                 }
-                            }else{
-                                switch(pthread_mutex_unlock(&map[largeur*(y+1)+x].mutex)){
-                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y+1, x); break;
-                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
-                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
-                                    default: break;
-                                }
-                            }  
+                                case POISSON:
+                                default: unlock((y + 1), x); break;
+                            }
                             break;
-                        }    
-                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock (%d, %d)", number, y+1, x); break;
+                        }  
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock down (%d, %d)", number, (y + 1), x); break;
                         case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
                         default: break;
                     }
                 }
-                break;
-                case 1:{
-                    if( y > 0){
-                    
-                        switch(pthread_mutex_trylock(&map[largeur*(y-1)+x].mutex)){
-                            case 0:{
-                                wprintw(fenetre_log, "\n%d lock (%d, %d)", number, y - 1, x); 
-                                
-                                map[largeur*y+x].element = VIDE;
-                                wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                                mvwaddch(fenetre_jeu, y, x, ' ');
-                                wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-
-                                switch(pthread_mutex_unlock(&map[largeur*y+x].mutex)){
-                                    case 0:      wprintw(fenetre_log, "\n%d unlock (%d, %d)",number, y, x); break;
-                                    case EINVAL: perror("Le mutex n'est pas init"); exit(EXIT_FAILURE);  break;
-                                    case EPERM:  perror("Le thread appelant ne possède pas le mutex et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
-                                    default: break;
-                                }
-                                y--;
-                                map[largeur*y+x].element = POISSON;
-                                wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                                mvwaddch(fenetre_jeu, y, x, number);
-                                wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                                  
-                                break;
-                            }    
-                            case EBUSY:  wprintw(fenetre_log, "\n%d deja lock (%d, %d)", number, y-1, x); break;
-                            case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
-                            default: break;
-                        }
+                if( y > 0){
+                    switch(pthread_mutex_trylock(&map[largeur*(y - 1)+x].mutex)){
+                        case 0:{
+                            if( is_free((y - 1), x) ){
+                                up = 1;
+                                /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                mvwaddch(fenetre_jeu, y-1, x, 'L');
+                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                            }else{
+                                unlock((y - 1), x);
+                            }  
+                            break;
+                        }    
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock up (%d, %d)", number, (y - 1), x); break;
+                        case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                        default: break;
                     }
                 }
-                break;
-            /*case 1:
-                if( y > 0 && is_free(y-1, x) ){
-                    map[largeur*y+x].element = VIDE;
-                    wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                    mvwaddch(fenetre_jeu, y, x, ' ');
-                    wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                    y--;
-                    map[largeur*y+x].element = POISSON;
-                    wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                    mvwaddch(fenetre_jeu, y, x, 'P');
-                    wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                if( x < largeur - 1){
+                    switch(pthread_mutex_trylock(&map[largeur*y+(x + 1)].mutex)){
+                        case 0:{
+                            if( is_free(y, (x + 1)) ){
+                                right = 1;
+                                /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                mvwaddch(fenetre_jeu, y, x+1, 'L');
+                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                            }else{
+                                unlock(y, (x + 1));
+                            }  
+                            break;
+                        }    
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock right (%d, %d)", number, y, (x + 1)); break;
+                        case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                        default: break;
+                    }
                 }
-                break;*/
-            case 2:
-                if( x < largeur - 1 && is_free(y, x+1) ){
-                    map[largeur*y+x].element = VIDE;
-                    wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                    mvwaddch(fenetre_jeu, y, x, ' ');
-                    wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                    x++;
-                    map[largeur*y+x].element = POISSON;
-                    wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                    mvwaddch(fenetre_jeu, y, x, 'P');
-                    wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
+                if( x > 0){
+                    switch(pthread_mutex_trylock(&map[largeur*y+(x - 1)].mutex)){
+                        case 0:{
+                            if( is_free(y, (x - 1)) ){
+                                left = 1;
+                                /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                mvwaddch(fenetre_jeu, y, x-1, 'L');
+                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                            }else{
+                                unlock(y, (x - 1));
+                            }  
+                            break;
+                        }    
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock left (%d, %d)", number, y, (x - 1)); break;
+                        case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
+                        default: break;
+                    }
                 }
-                break;
-            case 3:
-                if( x > 0 && is_free(y, x-1) ){
-                    map[largeur*y+x].element = VIDE;
-                    wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                    mvwaddch(fenetre_jeu, y, x, ' ');
-                    wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                    x--;
-                    map[largeur*y+x].element = POISSON;
-                    wattron(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                    mvwaddch(fenetre_jeu, y, x, 'P');
-                    wattroff(fenetre_jeu, COLOR_PAIR(POISSON_COLOR));
-                }
-                break;
+                if(up || down || right || left){
+            
+                    i = 0;
+                    array = malloc(sizeof(char)*(up+down+right+left));            
+                    if(up) array[i++] = 'u';
+                    if(down) array[i++] = 'd';
+                    if(right) array[i++] = 'r';
+                    if(left) array[i++] = 'l';
 
-            default: break;
+                    r = random_range(0, i-1);
+                    switch(array[r]){
+                        case 'u': step(poisson, y, x, y-1, x); y--; break;
+                        case 'd': step(poisson, y, x, y+1, x); y++; break;
+                        case 'r': step(poisson, y, x, y, x+1); x++; break;
+                        case 'l': step(poisson, y, x, y, x-1); x--; break;
+                        default: exit(EXIT_FAILURE);
+                    }
+
+                    
+                    
+                    if(up){
+                        unlock(old_y-1, old_x);
+                        
+                        /*if((int)array[r] != 'u'){
+                            wprintw(fenetre_log, "!");
+                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                            mvwaddch(fenetre_jeu, old_y-1, old_x, ' ');
+                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                        }*/
+                    }
+                    if(down){
+                        unlock(old_y+1, old_x);
+                        
+                        /*if(array[r] != 'd'){
+                            wprintw(fenetre_log, "!");
+                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                            mvwaddch(fenetre_jeu, old_y+1, old_x, ' ');
+                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                        }*/
+                    }
+                    if(right){
+                        unlock(old_y, old_x+1);
+                        
+                        /*if(array[r] != 'r'){
+                            wprintw(fenetre_log, "!");
+                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                            mvwaddch(fenetre_jeu, old_y, old_x+1, ' ');
+                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                        }*/
+                    }
+                    if(left){
+                        unlock(old_y, old_x-1);
+                        
+                        /*if(array[r] != 'l'){
+                            wprintw(fenetre_log, "!");
+                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                            mvwaddch(fenetre_jeu, old_y, old_x-1, ' ');
+                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                        }*/
+                    }
+
+                    free(array);
+                    unlock(old_y, old_x);
+
+                }
+            break;
+            }
+            case EBUSY: {
+                wprintw(fenetre_log, "\nJe suis lock", number, y, x);
+                
+                break;
+            }
+            case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
         }
 
-        /*wprintw(fenetre_log, " => (%d, %d)", y, x);*/
-        
+
+        up = down = right = left = 0;
         sleep(1);
+        
+        
 
     }
 }
+
+
 
 void handler(int s){
     fprintf(stdout, "\nSignal recu: %d\n", s);
@@ -253,7 +338,7 @@ void handler(int s){
 int main(int argc, char** argv) {
 
     WINDOW *box_log, *box_jeu, *box_etat, *box_magasin;
-    int startMenu, poireaus, i, j ,k;
+    int startMenu, poireaus, i, j ,k, sourisX, sourisY, bouton, click_y, click_x;
 
     largeur = atoi(argv[1]);
     hauteur = atoi(argv[2]);
@@ -289,6 +374,7 @@ int main(int argc, char** argv) {
     }
     
     ncurses_couleurs();
+    ncurses_souris();
 
 	
 	
@@ -354,36 +440,40 @@ int main(int argc, char** argv) {
         
     }
 
+    timeout(30);
     while(!quitter){
-
-       
-      
-        /*for (i = 0, k=0; i < largeur; i++)
-        {
-            for (j = 0; j < hauteur; j++, k++)
-            {
-                    if(!pthread_mutex_trylock(&map[k].mutex))
-                    {
-                        pthread_mutex_unlock(&map[k].mutex);
-                    
-                        wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
-                        mvwaddch(fenetre_jeu, j, i, 'L');
-                        wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));
-                    }else{
-                        pthread_mutex_unlock(&map[k].mutex);
-                        wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        mvwaddch(fenetre_jeu, j, i, ' ');
-                        wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                    }
-                    
-            }
-        }*/
 
         wrefresh(fenetre_log);
         wrefresh(fenetre_jeu);
+
+        switch(getch()) {
+            case KEY_MOUSE:
+                if(souris_getpos(&sourisX, &sourisY, &bouton) == OK) {
+                    if( (sourisX > 0 && sourisX <= largeur) && (sourisY > HAUTEUR_TOP && sourisY <= HAUTEUR_TOP + hauteur) ){
+                        
+                        click_y = sourisY - HAUTEUR_TOP - 1;
+                        click_x = sourisX - 1;
+                        wprintw(fenetre_log, "\n(%d, %d)", click_y, click_x);
+                        
+                        pthread_mutex_lock(&map[largeur*click_y+click_x].mutex);
+                        pthread_mutex_lock(&map[largeur*(click_y)+(click_x + 1)].mutex);
+                        pthread_mutex_lock(&map[largeur*(click_y + 1)+(click_x + 1)].mutex);
+                        pthread_mutex_lock(&map[largeur*(click_y + 1)+(click_x)].mutex);
+                        pthread_mutex_lock(&map[largeur*(click_y + 1)+(click_x + 1)].mutex);
+                        switch(map[largeur*(sourisY - HAUTEUR_TOP - 1)+(sourisX -1)].element){
+                            case POISSON: map[largeur*(sourisY - HAUTEUR_TOP - 1)+(sourisX -1)].poisson->fuite = 5;
+                            default: break;
+                        }
+                        unlock(click_y, click_x);
+                        unlock(click_y, click_x + 1);
+                    }
+                }
+                break;
+            default: break;
+        }
+
         
 
-        sleep(1);
     }
 
 
