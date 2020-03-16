@@ -11,7 +11,10 @@
 
 #define MAX_POISSON 1
 #define POISSON 1
+#define JOUEUR 2
 #define VIDE 0
+
+#define DEBUG 0
 
 #define SPAWN_RATE_1 50
 #define SPAWN_RATE_2 35
@@ -23,11 +26,16 @@ typedef struct poisson_type{
 
 }poisson_t;
 
+typedef struct joueur_type{
+    int number;
+}joueur_t;
+
 typedef struct case_type{
     int element;
     pthread_mutex_t mutex;
     union{
         poisson_t* poisson;
+        joueur_t joueur;
     };
 }case_t;
 
@@ -134,7 +142,7 @@ void* routine_poisson(void* arg){
 
                         y = random_range(0, hauteur - 1);
                         x = random_range(0, largeur - 1);
-                        sleep(1);
+                        
                     }
                 }
                 break;
@@ -172,9 +180,11 @@ void* routine_poisson(void* arg){
                             {
                                 case VIDE: {
                                     down = 1;
-                                    /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
-                                    mvwaddch(fenetre_jeu, y+1, x, 'L');
-                                    wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                                    if(DEBUG){
+                                        wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                        mvwaddch(fenetre_jeu, y+1, x, 'L');
+                                        wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                    }
                                     break;
                                 }
                                 case POISSON:
@@ -182,7 +192,7 @@ void* routine_poisson(void* arg){
                             }
                             break;
                         }  
-                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock down (%d, %d)", number, (y + 1), x); break;
+                        case EBUSY: /* wprintw(fenetre_log, "\n%d deja lock down (%d, %d)", number, (y + 1), x);*/ break;
                         case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
                         default: break;
                     }
@@ -192,15 +202,15 @@ void* routine_poisson(void* arg){
                         case 0:{
                             if( is_free((y - 1), x) ){
                                 up = 1;
-                                /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                if(DEBUG){ wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
                                 mvwaddch(fenetre_jeu, y-1, x, 'L');
-                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));}
                             }else{
                                 unlock((y - 1), x);
                             }  
                             break;
                         }    
-                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock up (%d, %d)", number, (y - 1), x); break;
+                        case EBUSY:  /*wprintw(fenetre_log, "\n%d deja lock up (%d, %d)", number, (y - 1), x);*/ break;
                         case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
                         default: break;
                     }
@@ -210,15 +220,15 @@ void* routine_poisson(void* arg){
                         case 0:{
                             if( is_free(y, (x + 1)) ){
                                 right = 1;
-                                /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                 if(DEBUG){wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
                                 mvwaddch(fenetre_jeu, y, x+1, 'L');
-                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));}
                             }else{
                                 unlock(y, (x + 1));
                             }  
                             break;
                         }    
-                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock right (%d, %d)", number, y, (x + 1)); break;
+                        case EBUSY:  /*wprintw(fenetre_log, "\n%d deja lock right (%d, %d)", number, y, (x + 1));*/ break;
                         case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
                         default: break;
                     }
@@ -228,19 +238,21 @@ void* routine_poisson(void* arg){
                         case 0:{
                             if( is_free(y, (x - 1)) ){
                                 left = 1;
-                                /*wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                                if(DEBUG){ wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
                                 mvwaddch(fenetre_jeu, y, x-1, 'L');
-                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));*/
+                                wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));}
                             }else{
                                 unlock(y, (x - 1));
                             }  
                             break;
                         }    
-                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock left (%d, %d)", number, y, (x - 1)); break;
+                        case EBUSY: /* wprintw(fenetre_log, "\n%d deja lock left (%d, %d)", number, y, (x - 1)); */break;
                         case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
                         default: break;
                     }
                 }
+
+                
                 if(up || down || right || left){
             
                     i = 0;
@@ -258,48 +270,45 @@ void* routine_poisson(void* arg){
                         case 'l': step(poisson, y, x, y, x-1); x--; break;
                         default: exit(EXIT_FAILURE);
                     }
-
+                    
+                    /*sleep(1);*/
                     
                     
                     if(up){
                         unlock(old_y-1, old_x);
                         
-                        /*if((int)array[r] != 'u'){
-                            wprintw(fenetre_log, "!");
+                        if(DEBUG && (int)array[r] != 'u'){
                             wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
                             mvwaddch(fenetre_jeu, old_y-1, old_x, ' ');
                             wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }*/
+                        }
                     }
                     if(down){
                         unlock(old_y+1, old_x);
                         
-                        /*if(array[r] != 'd'){
-                            wprintw(fenetre_log, "!");
+                        if(DEBUG && array[r] != 'd'){
                             wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
                             mvwaddch(fenetre_jeu, old_y+1, old_x, ' ');
                             wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }*/
+                        }
                     }
                     if(right){
                         unlock(old_y, old_x+1);
                         
-                        /*if(array[r] != 'r'){
-                            wprintw(fenetre_log, "!");
+                        if(DEBUG && array[r] != 'r'){
                             wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
                             mvwaddch(fenetre_jeu, old_y, old_x+1, ' ');
                             wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }*/
+                        }
                     }
                     if(left){
                         unlock(old_y, old_x-1);
                         
-                        /*if(array[r] != 'l'){
-                            wprintw(fenetre_log, "!");
+                        if(DEBUG && array[r] != 'l'){
                             wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
                             mvwaddch(fenetre_jeu, old_y, old_x-1, ' ');
                             wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }*/
+                        }
                     }
 
                     free(array);
@@ -309,7 +318,7 @@ void* routine_poisson(void* arg){
             break;
             }
             case EBUSY: {
-                wprintw(fenetre_log, "\nJe suis lock", number, y, x);
+                wprintw(fenetre_log, "\nJe suis (%d, %d)", y, x);
                 
                 break;
             }
@@ -330,15 +339,39 @@ void* routine_poisson(void* arg){
 void handler(int s){
     fprintf(stdout, "\nSignal recu: %d\n", s);
     quitter = s == SIGINT;
+    exit(EXIT_SUCCESS);
 }
 
 
+typedef struct coord_t{ int x, y;} coord_t;
+
+void* routine_lock(void* arg){
+    coord_t coord = *((coord_t*)arg);
+    
+    pthread_mutex_lock(&map[largeur*coord.y+coord.x].mutex);
+    wprintw(fenetre_log, "\nlock: (%d %d)", coord.y, coord.x);
+
+    if(DEBUG){wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+    mvwaddch(fenetre_jeu, coord.y, coord.x, 'L');
+    wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));}
+    
+
+    switch(map[largeur*coord.y+coord.x].element){
+        case POISSON: map[largeur*coord.y+coord.x].poisson->fuite = 5;
+        default: break;
+    }
+    
+    free(arg);
+}
 
 
 int main(int argc, char** argv) {
 
     WINDOW *box_log, *box_jeu, *box_etat, *box_magasin;
     int startMenu, poireaus, i, j ,k, sourisX, sourisY, bouton, click_y, click_x;
+
+    pthread_t lock_at_click[5*5];
+    
 
     largeur = atoi(argv[1]);
     hauteur = atoi(argv[2]);
@@ -429,7 +462,7 @@ int main(int argc, char** argv) {
     
     for(i = 0; i < MAX_POISSON; i++){
         
-        threads_poissons[i] = (pthread_t *) malloc(sizeof(pthread_t));
+        threads_poissons[i] = (pthread_t*) malloc(sizeof(pthread_t));
     }
 
     int* tmp;
@@ -453,24 +486,71 @@ int main(int argc, char** argv) {
                         
                         click_y = sourisY - HAUTEUR_TOP - 1;
                         click_x = sourisX - 1;
-                        wprintw(fenetre_log, "\n(%d, %d)", click_y, click_x);
-                        
-                        pthread_mutex_lock(&map[largeur*click_y+click_x].mutex);
-                        pthread_mutex_lock(&map[largeur*(click_y)+(click_x + 1)].mutex);
-                        pthread_mutex_lock(&map[largeur*(click_y + 1)+(click_x + 1)].mutex);
-                        pthread_mutex_lock(&map[largeur*(click_y + 1)+(click_x)].mutex);
-                        pthread_mutex_lock(&map[largeur*(click_y + 1)+(click_x + 1)].mutex);
-                        switch(map[largeur*(sourisY - HAUTEUR_TOP - 1)+(sourisX -1)].element){
-                            case POISSON: map[largeur*(sourisY - HAUTEUR_TOP - 1)+(sourisX -1)].poisson->fuite = 5;
-                            default: break;
+
+                        coord_t* tmp_coord;
+                        k=0;
+                        for(i = click_y-2; i < click_y-2 + 5; ++i){
+                            for(j = click_x-2; j < click_x-2 + 5; ++j, ++k){
+                                
+                                if( i >= 0 && i < hauteur - 1 && j < largeur - 1 && j >= 0 ){
+                                    tmp_coord = malloc(sizeof(coord_t));
+                                    tmp_coord->x = j;
+                                    tmp_coord->y = i;
+                                    
+                                    pthread_create(&lock_at_click[k], NULL, routine_lock, tmp_coord);
+                                }
+                            }
                         }
-                        unlock(click_y, click_x);
-                        unlock(click_y, click_x + 1);
+
+                        k = 0;
+                        for(i = click_y-2; i < click_y-2 + 5; ++i){
+                            for(j = click_x-2; j < click_x-2 + 5; ++j, ++k){
+                                
+                                if( i >= 0 && i < hauteur - 1 && j < largeur - 1 && j >= 0 ){
+                                    pthread_join(lock_at_click[k], NULL);
+                                }
+                            }
+                        }
+
+
+                        switch (map[largeur*click_y+click_x].element)
+                        {
+                            case VIDE:{
+                                map[largeur*click_y+click_x].element = JOUEUR;
+                                map[largeur*click_y+click_x].joueur.number = 1;
+                                wattron(fenetre_jeu, COLOR_PAIR(JOUEUR_COLOR));
+                                mvwaddch(fenetre_jeu, click_y, click_x, 'J');
+                                wattroff(fenetre_jeu, COLOR_PAIR(JOUEUR_COLOR));
+                                break;
+                            }
+                            case POISSON: wprintw(fenetre_log, "\nImpossible de poser sa ligne ici");
+                            default: wprintw(fenetre_log, "\nImpossible de poser sa ligne ici"); break;
+                        }
+
+                        
+
+                        sleep(1);
+
+                        for(i = click_y-2; i < click_y-2 + 5; ++i){
+                            for(j = click_x-2; j < click_x-2 + 5; ++j){
+                               if( i >= 0 && i < hauteur - 1 && j < largeur - 1 && j >= 0 ){                                    
+                                    unlock(i, j);
+                                    if(DEBUG && !(i ==click_y && j == click_x)){
+                                        wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                        mvwaddch(fenetre_jeu, i, j, ' ');
+                                        wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                                    }
+                                }
+                            }
+                        }
+                        
                     }
                 }
                 break;
             default: break;
         }
+
+       
 
         
 
