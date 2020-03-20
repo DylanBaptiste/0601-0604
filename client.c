@@ -8,6 +8,7 @@
 #include <stdio.h> 
 #include <errno.h> 
 #include <pthread.h>
+#include <sys/time.h>
 
 #define MAX_POISSON 1
 #define POISSON 1
@@ -23,11 +24,17 @@
 typedef struct poisson_type{
     int fuite;
     char valeur;
+    int poireaus;
+    pthread_mutex_t mutex;
+    
 
 }poisson_t;
 
 typedef struct joueur_type{
     int number;
+    int poireaus;
+	pthread_mutex_t mutex;
+    pthread_cond_t releve;
 }joueur_t;
 
 typedef struct case_type{
@@ -35,9 +42,13 @@ typedef struct case_type{
     pthread_mutex_t mutex;
     union{
         poisson_t* poisson;
-        joueur_t joueur;
+        joueur_t* joueur;
     };
 }case_t;
+
+
+joueur_t* joueur1;
+   
 
 void clean_ncurses(){
     ncurses_stopper();
@@ -74,6 +85,14 @@ poisson_t* generer_poisson(int seed){
     poisson_t* p = malloc(sizeof(poisson_t));
     p->fuite = 0;
     p->valeur = r < SPAWN_RATE_1 ? '1' : ( r < SPAWN_RATE_1 + SPAWN_RATE_2 ? '2' : '3' );
+    switch (p->valeur)
+    {
+    case '1': p->poireaus = 100; break;
+    case '2': p->poireaus = 200; break;
+    case '3': p->poireaus = 500; break;
+    default:  p->poireaus = 100;break;
+    }
+    p->mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
     return p;
 }
 
@@ -100,7 +119,9 @@ void* routine_poisson(void* arg){
     int number = *((int*)arg);
     int seed = *((int*)arg) * 10;
     int up, down, left, right = 0;
+    int catch_up, catch_down, catch_left, catch_right = 0;
     int i, r = 0;
+	int attrape = 0;
     char* array;
     poisson_t* poisson = generer_poisson(seed);
     int x, y, ok, direction, old_x, old_y = 0;
@@ -163,12 +184,21 @@ void* routine_poisson(void* arg){
         
     }
 
-    while(1){
+    while(attrape == 0){
         
         up, down, left, right = 0;
-        poisson->fuite -= poisson->fuite != 0;
+
+        /*wprintw(fenetre_log, "\nFuite: %d", poisson->fuite);*/
+        if(poisson->fuite > 0){
+            poisson->fuite--;
+        }
+        
+		
         old_x = x;
         old_y = y;
+
+        
+
 
         //try lock moi meme si echec -> quelque chose m'arrive je fait pas les if
         switch(pthread_mutex_trylock(&map[largeur*y+x].mutex)){
@@ -187,12 +217,20 @@ void* routine_poisson(void* arg){
                                     }
                                     break;
                                 }
+                                case JOUEUR: {
+                                    catch_down = poisson->fuite == 0; /*s'il est en fuite il ne se fait pas prendre*/
+                                    if(catch_down == 0) unlock( y+1, x);
+                                    down = 0;
+                                    wprintw(fenetre_log, "\nJoueur en (%d, %d)", (y + 1), x);
+                                    
+                                    break;
+                                }
                                 case POISSON:
                                 default: unlock((y + 1), x); break;
                             }
                             break;
                         }  
-                        case EBUSY: /* wprintw(fenetre_log, "\n%d deja lock down (%d, %d)", number, (y + 1), x);*/ break;
+                        case EBUSY:  wprintw(fenetre_log, "\n%d deja lock down (%d, %d)", number, (y + 1), x); break;
                         case EDEADLK: perror("Le mutex est lock et vérification d'erreur lui est signalé"); exit(EXIT_FAILURE); break;
                         default: break;
                     }
@@ -252,73 +290,114 @@ void* routine_poisson(void* arg){
                     }
                 }
 
-                
-                if(up || down || right || left){
-            
-                    i = 0;
-                    array = malloc(sizeof(char)*(up+down+right+left));            
-                    if(up) array[i++] = 'u';
-                    if(down) array[i++] = 'd';
-                    if(right) array[i++] = 'r';
-                    if(left) array[i++] = 'l';
-
+                if(catch_up || catch_down || catch_right || catch_left){
+                    /*array = malloc(sizeof(char)*(catch_up+catch_down+catch_right+catch_left));
+                    i=0;
+                    if(catch_up) array[i++] = 'u';
+                    if(catch_down) array[i++] = 'd';
+                    if(catch_right) array[i++] = 'r';
+                    if(catch_left) array[i++] = 'l';
                     r = random_range(0, i-1);
                     switch(array[r]){
                         case 'u': step(poisson, y, x, y-1, x); y--; break;
-                        case 'd': step(poisson, y, x, y+1, x); y++; break;
+                        case 'd':{
+                            
+                        } break;
                         case 'r': step(poisson, y, x, y, x+1); x++; break;
                         case 'l': step(poisson, y, x, y, x-1); x--; break;
                         default: exit(EXIT_FAILURE);
+                    }*/
+
+                    wattron(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+                    mvwaddch(fenetre_jeu, y, x, 'P');
+                    wattroff(fenetre_jeu, COLOR_PAIR(RED_COLOR));
+
+                    struct timespec timeToWait;
+                    struct timeval now;
+                    
+                    gettimeofday(&now, NULL);
+
+                    timeToWait.tv_sec = now.tv_sec+5;
+                    timeToWait.tv_nsec = 0;
+
+                    /*pthread_mutex_lock(&(poisson->mutex));*/
+                    switch(pthread_cond_timedwait(&(map[largeur*(y+1)+x].joueur->releve), &(map[largeur*(y+1)+x].joueur->mutex), &timeToWait)){
+                        case ETIMEDOUT:
+							wprintw(fenetre_log, "\nLe temps est passé");
+                            break;
+						case EINVAL: perror("argument invalide pthread_cond_timedwait"); exit(EXIT_FAILURE); break;
+						case EPERM: perror("mutex invalide pthread_cond_timedwait"); exit(EXIT_FAILURE); break;
+						default: 
+							wprintw(fenetre_log, "\nAttrapé !!!!");
+                            joueur1->poireaus += poisson->poireaus;
+                            mvwprintw(fenetre_etat, 0, 0, "Poireaus: %d", joueur1->poireaus);
+							attrape = 1;
+							break;
                     }
                     
-                    /*sleep(1);*/
-                    
-                    
-                    if(up){
-                        unlock(old_y-1, old_x);
-                        
-                        if(DEBUG && (int)array[r] != 'u'){
-                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                            mvwaddch(fenetre_jeu, old_y-1, old_x, ' ');
-                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }
-                    }
-                    if(down){
-                        unlock(old_y+1, old_x);
-                        
-                        if(DEBUG && array[r] != 'd'){
-                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                            mvwaddch(fenetre_jeu, old_y+1, old_x, ' ');
-                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }
-                    }
-                    if(right){
-                        unlock(old_y, old_x+1);
-                        
-                        if(DEBUG && array[r] != 'r'){
-                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                            mvwaddch(fenetre_jeu, old_y, old_x+1, ' ');
-                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }
-                    }
-                    if(left){
-                        unlock(old_y, old_x-1);
-                        
-                        if(DEBUG && array[r] != 'l'){
-                            wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                            mvwaddch(fenetre_jeu, old_y, old_x-1, ' ');
-                            wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                        }
+
+					if(attrape){
+						map[largeur*y+x].element = VIDE;
+						wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+						mvwaddch(fenetre_jeu, old_y, old_x, ' ');
+						wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+                        pthread_mutex_lock(&(map[largeur*(y+1)+x].joueur->mutex));
+                        map[largeur*(y+1)+x].joueur->poireaus += poisson->valeur;
+					}else{
+                        poisson->fuite = 5;
                     }
 
-                    free(array);
-                    unlock(old_y, old_x);
+                    unlock( y+1, x);
+
+					catch_down = catch_left = catch_right = catch_up = 0;
+					if(up) unlock(old_y-1, old_x);
+					if(down) unlock(old_y+1, old_x);
+					if(right) unlock(old_y, old_x+1);
+					if(left)unlock(old_y, old_x-1);
+					unlock(y, x);
+					
+
+
+                    
+
+                }else{
+                    if(up || down || right || left){
+                
+                        i = 0;
+                        array = malloc(sizeof(char)*(up+down+right+left));            
+                        if(up) array[i++] = 'u';
+                        if(down) array[i++] = 'd';
+                        if(right) array[i++] = 'r';
+                        if(left) array[i++] = 'l';
+
+                        r = random_range(0, i-1);
+                        switch(array[r]){
+                            case 'u': step(poisson, y, x, y-1, x); y--; break;
+                            case 'd': step(poisson, y, x, y+1, x); y++; break;
+                            case 'r': step(poisson, y, x, y, x+1); x++; break;
+                            case 'l': step(poisson, y, x, y, x-1); x--; break;
+                            default: exit(EXIT_FAILURE);
+                        }
+                        
+                        /*sleep(1);*/
+                        
+                        
+                        if(up) unlock(old_y-1, old_x);
+                        if(down) unlock(old_y+1, old_x);
+                        if(right) unlock(old_y, old_x+1);
+                        if(left)unlock(old_y, old_x-1);
+
+                        free(array);
+						unlock(old_y, old_x);
+                        
+                    }
+					
 
                 }
             break;
             }
             case EBUSY: {
-                wprintw(fenetre_log, "\nJe suis (%d, %d)", y, x);
+                wprintw(fenetre_log, "\nJe suis lock", y, x);
                 
                 break;
             }
@@ -328,9 +407,6 @@ void* routine_poisson(void* arg){
 
         up = down = right = left = 0;
         sleep(1);
-        
-        
-
     }
 }
 
@@ -357,34 +433,57 @@ void* routine_lock(void* arg){
     
 
     switch(map[largeur*coord.y+coord.x].element){
-        case POISSON: map[largeur*coord.y+coord.x].poisson->fuite = 5;
+        case POISSON:{
+            /*pthread_mutex_lock(&map[largeur*coord.y+coord.x].poisson->mutex);*/
+            map[largeur*coord.y+coord.x].poisson->fuite = 5;            
+            /*pthread_mutex_unlock(&map[largeur*coord.y+coord.x].poisson->mutex);*/
+        }
         default: break;
     }
     
     free(arg);
 }
-
+ 
 
 int main(int argc, char** argv) {
 
     WINDOW *box_log, *box_jeu, *box_etat, *box_magasin;
     int startMenu, poireaus, i, j ,k, sourisX, sourisY, bouton, click_y, click_x;
+	int lignePose = 0;
+	int ligneX, ligneY = 0;
+
+    joueur1 = malloc(sizeof(joueur_t));
+    *joueur1 = (joueur_t){1, 0, (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER, (pthread_cond_t)PTHREAD_COND_INITIALIZER};
 
     pthread_t lock_at_click[5*5];
+     if(atexit(clean_ncurses) != 0) {
+        perror("Probleme lors de l'enregistrement clean_ncurses");
+       exit(EXIT_FAILURE);
+    }
+
     
+
 
     largeur = atoi(argv[1]);
     hauteur = atoi(argv[2]);
 
+    
+    
+
     signal(SIGINT, handler); /*Liberation memoire gerer si SIGINT recus*/
     map = malloc(sizeof(case_t) * largeur * hauteur);
 
-    for(i, k = 0; i < largeur; ++i){
+    
+    k = 0;
+    for(i = 0; i < largeur; ++i){
        for(j = 0; j < hauteur; ++j, ++k){
            map[k].element = VIDE;
-           pthread_mutex_init(&map[k].mutex, NULL);
+           map[k].mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+           /*pthread_mutex_init(&map[k].mutex, NULL);*/
         }
     }
+
+   
 
    /* if(argc != 6){
         fprintf(stdout, "mauvaise utilisation: ./client [<IP>] [<PORT>]\n");
@@ -401,10 +500,7 @@ int main(int argc, char** argv) {
     /* ============ Mise en place graphique ============ */
     
     ncurses_initialiser();
-    if(atexit(clean_ncurses) != 0) {
-        perror("Probleme lors de l'enregistrement clean_ncurses");
-       exit(EXIT_FAILURE);
-    }
+   
     
     ncurses_couleurs();
     ncurses_souris();
@@ -439,7 +535,7 @@ int main(int argc, char** argv) {
 	scrollok(fenetre_log, TRUE);	
     startMenu = START_MENU;
 
-    mvwprintw(fenetre_etat, 0, 0, "Poireaus: %d", poireaus);
+    mvwprintw(fenetre_etat, 0, 0, "Poireaus: %d", joueur1->poireaus);
     
     wattron(fenetre_etat, COLOR_PAIR(POISSON_COLOR));
     mvwaddch(fenetre_etat, startMenu+0, 0, '1');
@@ -478,6 +574,7 @@ int main(int argc, char** argv) {
 
         wrefresh(fenetre_log);
         wrefresh(fenetre_jeu);
+        wrefresh(fenetre_etat);
 
         switch(getch()) {
             case KEY_MOUSE:
@@ -487,62 +584,80 @@ int main(int argc, char** argv) {
                         click_y = sourisY - HAUTEUR_TOP - 1;
                         click_x = sourisX - 1;
 
-                        coord_t* tmp_coord;
-                        k=0;
-                        for(i = click_y-2; i < click_y-2 + 5; ++i){
-                            for(j = click_x-2; j < click_x-2 + 5; ++j, ++k){
-                                
-                                if( i >= 0 && i < hauteur - 1 && j < largeur - 1 && j >= 0 ){
-                                    tmp_coord = malloc(sizeof(coord_t));
-                                    tmp_coord->x = j;
-                                    tmp_coord->y = i;
-                                    
-                                    pthread_create(&lock_at_click[k], NULL, routine_lock, tmp_coord);
-                                }
-                            }
-                        }
+						if(lignePose == 0){
+							ligneX = click_x;
+							ligneY = click_y;
+                        	coord_t* tmp_coord;
+							k=0;
+							for(i = click_y-2; i < click_y-2 + 5; ++i){
+								for(j = click_x-2; j < click_x-2 + 5; ++j, ++k){
 
-                        k = 0;
-                        for(i = click_y-2; i < click_y-2 + 5; ++i){
-                            for(j = click_x-2; j < click_x-2 + 5; ++j, ++k){
-                                
-                                if( i >= 0 && i < hauteur - 1 && j < largeur - 1 && j >= 0 ){
-                                    pthread_join(lock_at_click[k], NULL);
-                                }
-                            }
-                        }
+									
+									if( i >= 0 && i < hauteur && j < largeur  && j >= 0 ){
+                                        
+										tmp_coord = malloc(sizeof(coord_t));
+										tmp_coord->x = j;
+										tmp_coord->y = i;
+										
+										pthread_create(&lock_at_click[k], NULL, routine_lock, tmp_coord);
+									}
+								}
+							}
+
+							k = 0;
+							for(i = click_y-2; i < click_y-2 + 5; ++i){
+								for(j = click_x-2; j < click_x-2 + 5; ++j, ++k){
+									
+									if( i >= 0 && i < hauteur && j < largeur && j >= 0 ){
+										pthread_join(lock_at_click[k], NULL);
+									}
+								}
+							}
 
 
-                        switch (map[largeur*click_y+click_x].element)
-                        {
-                            case VIDE:{
-                                map[largeur*click_y+click_x].element = JOUEUR;
-                                map[largeur*click_y+click_x].joueur.number = 1;
-                                wattron(fenetre_jeu, COLOR_PAIR(JOUEUR_COLOR));
-                                mvwaddch(fenetre_jeu, click_y, click_x, 'J');
-                                wattroff(fenetre_jeu, COLOR_PAIR(JOUEUR_COLOR));
-                                break;
-                            }
-                            case POISSON: wprintw(fenetre_log, "\nImpossible de poser sa ligne ici");
-                            default: wprintw(fenetre_log, "\nImpossible de poser sa ligne ici"); break;
-                        }
+							switch (map[largeur*click_y+click_x].element)
+							{
+								case VIDE:{
+									lignePose = 1;
+									map[largeur*click_y+click_x].element = JOUEUR;
+									map[largeur*click_y+click_x].joueur = joueur1;
+									wattron(fenetre_jeu, COLOR_PAIR(JOUEUR_COLOR));
+									mvwaddch(fenetre_jeu, click_y, click_x, 'J');
+									wattroff(fenetre_jeu, COLOR_PAIR(JOUEUR_COLOR));
+									break;
+								}
+								case POISSON: wprintw(fenetre_log, "\nImpossible de poser sa ligne ici");
+								default: wprintw(fenetre_log, "\nImpossible de poser sa ligne ici"); break;
+							}
 
-                        
+							
 
-                        sleep(1);
+							
 
-                        for(i = click_y-2; i < click_y-2 + 5; ++i){
-                            for(j = click_x-2; j < click_x-2 + 5; ++j){
-                               if( i >= 0 && i < hauteur - 1 && j < largeur - 1 && j >= 0 ){                                    
-                                    unlock(i, j);
-                                    if(DEBUG && !(i ==click_y && j == click_x)){
-                                        wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                                        mvwaddch(fenetre_jeu, i, j, ' ');
-                                        wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
-                                    }
-                                }
-                            }
-                        }
+							for(i = click_y-2; i < click_y-2 + 5; ++i){
+								for(j = click_x-2; j < click_x-2 + 5; ++j){
+								if( i >= 0 && i < hauteur && j < largeur && j >= 0 ){                                    
+										unlock(i, j);
+										if(DEBUG && !(i ==click_y && j == click_x)){
+											wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+											mvwaddch(fenetre_jeu, i, j, ' ');
+											wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+										}
+									}
+								}
+							}
+						}
+						else{
+							lignePose = 0;
+							
+							pthread_cond_broadcast(&(map[largeur*ligneY+ligneX].joueur->releve));
+
+
+							map[largeur*ligneY+ligneX].element = VIDE;
+							wattron(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+							mvwaddch(fenetre_jeu, ligneY, ligneX, ' ');
+							wattroff(fenetre_jeu, COLOR_PAIR(EAU_COLOR));
+						}
                         
                     }
                 }
