@@ -2,9 +2,9 @@
 # CONFIGURATION GENERALE
 #
 
-EXEC = client serveur
-OBJETS = utils/ncurses_utils.o
-NOM_PROJET = TP2
+EXEC = serveur
+OBJETS = utils/serveur_func.o structures/poisson.o
+NOM_PROJET = PROJET 0601-0604
 
 #
 # SUFFIXES
@@ -24,7 +24,7 @@ OBJETS_O = $(OBJETS) $(EXEC_O)
 #
 
 CC = gcc
-CCFLAGS_STD = 
+CCFLAGS_STD = #-Wall -O3 -Werror -ansi -pedantic
 CCFLAGS_DEBUG = -D _DEBUG_
 CCFLAGS = $(CCFLAGS_STD)
 CCLIBS = -lncurses -lpthread
@@ -87,6 +87,11 @@ archive: clean
 	@echo "Termine."
 
 # DEPENDANCES
-utils/ncurses_utils.o: utils/ncurses_utils.c utils/ncurses_utils.h
-client.o: client.c utils/ncurses_utils.h utils/config.h
-serveur.o: serveur.c utils/ncurses_utils.h utils/config.h
+utils/serveur_func.o: utils/serveur_func.c utils/serveur_func.h \
+ utils/../structures/case.h utils/../structures/poisson.h \
+ utils/../structures/../config.h utils/../structures/joueur.h
+structures/poisson.o: structures/poisson.c structures/poisson.h \
+ structures/../config.h
+serveur.o: serveur.c utils/serveur_func.h utils/../structures/case.h \
+ utils/../structures/poisson.h utils/../structures/../config.h \
+ utils/../structures/joueur.h config.h structures/case.h

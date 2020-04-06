@@ -26,8 +26,8 @@
 #define NAME_MAGASIN " - Magasin - "
 #define NAME_LOG " - Logs - "
 
-  
+#define START_MENU	3
 
-#define START_MENU	2
+
 
 #endif
